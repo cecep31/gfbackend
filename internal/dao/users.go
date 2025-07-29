@@ -5,7 +5,9 @@
 package dao
 
 import (
+	"context"
 	"gfbackend/internal/dao/internal"
+	"gfbackend/internal/model/entity"
 )
 
 // usersDao is the data access object for the table users.
@@ -20,3 +22,29 @@ var (
 )
 
 // Add your custom methods and functionality below.
+
+// GetByEmail retrieves a user by email address
+func (dao *usersDao) GetByEmail(ctx context.Context, email string) (*entity.Users, error) {
+	var user *entity.Users
+	err := dao.Ctx(ctx).Where("email", email).Scan(&user)
+	return user, err
+}
+
+// GetByUsername retrieves a user by username
+func (dao *usersDao) GetByUsername(ctx context.Context, username string) (*entity.Users, error) {
+	var user *entity.Users
+	err := dao.Ctx(ctx).Where("username", username).Scan(&user)
+	return user, err
+}
+
+// ExistsByEmail checks if a user exists with the given email
+func (dao *usersDao) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	count, err := dao.Ctx(ctx).Where("email", email).Count()
+	return count > 0, err
+}
+
+// ExistsByUsername checks if a user exists with the given username
+func (dao *usersDao) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+	count, err := dao.Ctx(ctx).Where("username", username).Count()
+	return count > 0, err
+}

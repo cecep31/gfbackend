@@ -20,3 +20,14 @@ bin
 temp
 main.exe
 .exe
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+
+# Keep example files
+!.env.example
