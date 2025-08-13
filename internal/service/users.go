@@ -78,9 +78,27 @@ func (s *sUsers) DeleteUser(ctx context.Context, id int) error {
 
 func (s *sUsers) GetAllUsers(ctx context.Context) ([]*entity.Users, error) {
 	var users []*entity.Users
-	err := dao.Users.Ctx(ctx).Where("deleted_at IS NULL").Scan(&users)
+	err := dao.Users.Ctx(ctx).Scan(&users)
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to get all users")
 	}
 	return users, nil
+}
+
+// String-based methods for API compatibility
+func (s *sUsers) GetUserByIDString(ctx context.Context, id string) (*entity.Users, error) {
+	var user *entity.Users
+	err := dao.Users.Ctx(ctx).Where("id", id).Scan(&user)
+	if err != nil {
+		return nil, gerror.Wrap(err, "failed to get user by ID")
+	}
+	return user, nil
+}
+
+func (s *sUsers) DeleteUserByString(ctx context.Context, id string) error {
+	_, err := dao.Users.Ctx(ctx).Where("id", id).Delete()
+	if err != nil {
+		return gerror.Wrap(err, "failed to delete user")
+	}
+	return nil
 }

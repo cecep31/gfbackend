@@ -2,17 +2,11 @@ package users
 
 import (
 	"context"
-	"strconv"
-	"strings"
 
 	v1 "gfbackend/api/users/v1"
-	"gfbackend/internal/dao"
-	"gfbackend/internal/model/do"
-	"gfbackend/internal/model/entity"
 	"gfbackend/internal/service"
 
 	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/os/gtime"
 )
 
 func (c *ControllerV1) GetUsers(ctx context.Context, req *v1.GetUsersReq) (res *v1.GetUsersRes, err error) {
@@ -30,11 +24,7 @@ func (c *ControllerV1) GetUsers(ctx context.Context, req *v1.GetUsersReq) (res *
 			continue
 		}
 		
-		// Convert ID from string to int
-		id, err := strconv.Atoi(entityUser.Id)
-		if err != nil {
-			continue // Skip invalid IDs
-		}
+
 		
 		// Combine first and last name
 		name := entityUser.FirstName
@@ -50,9 +40,15 @@ func (c *ControllerV1) GetUsers(ctx context.Context, req *v1.GetUsersReq) (res *
 		}
 		
 		user := v1.User{
-			ID:    id,
-			Name:  name,
-			Email: entityUser.Email,
+			ID:        entityUser.Id,
+			Email:     entityUser.Email,
+			Name:      name,
+			Username:  entityUser.Username,
+			Image:     entityUser.Image,
+			FirstName: entityUser.FirstName,
+			LastName:  entityUser.LastName,
+			CreatedAt: entityUser.CreatedAt.String(),
+			UpdatedAt: entityUser.UpdatedAt.String(),
 		}
 		
 		// Format timestamps
@@ -67,27 +63,36 @@ func (c *ControllerV1) GetUsers(ctx context.Context, req *v1.GetUsersReq) (res *
 	}
 
 	return &v1.GetUsersRes{
-		Users: users,
-		Total: len(users),
+		Success: true,
+		Message: "Users retrieved successfully",
+		Data:    users,
+		Meta: &v1.MetaData{
+			TotalItems: len(users),
+			Offset:     req.Offset,
+			Limit:      req.Limit,
+			TotalPages: (len(users) + req.Limit - 1) / req.Limit,
+		},
 	}, nil
 }
 
 func (c *ControllerV1) GetUser(ctx context.Context, req *v1.GetUserReq) (res *v1.GetUserRes, err error) {
 	// Get user from database
 	userService := service.NewUsers()
-	entityUser, err := userService.GetUserByID(ctx, req.ID)
+	entityUser, err := userService.GetUserByIDString(ctx, req.ID)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get user from database")
+		return &v1.GetUserRes{
+			Success: false,
+			Message: "User not found",
+			Error:   err.Error(),
+		}, nil
 	}
 	
 	if entityUser == nil {
-		return nil, gerror.New("user not found")
-	}
-	
-	// Convert ID from string to int
-	id, err := strconv.Atoi(entityUser.Id)
-	if err != nil {
-		return nil, gerror.Wrap(err, "invalid user ID format")
+		return &v1.GetUserRes{
+			Success: false,
+			Message: "User not found",
+			Error:   "User does not exist",
+		}, nil
 	}
 	
 	// Combine first and last name
@@ -104,209 +109,112 @@ func (c *ControllerV1) GetUser(ctx context.Context, req *v1.GetUserReq) (res *v1
 	}
 	
 	user := &v1.User{
-		ID:    id,
-		Name:  name,
-		Email: entityUser.Email,
+		ID:        entityUser.Id,
+		Email:     entityUser.Email,
+		Name:      name,
+		Username:  entityUser.Username,
+		Image:     entityUser.Image,
+		FirstName: entityUser.FirstName,
+		LastName:  entityUser.LastName,
+		CreatedAt: entityUser.CreatedAt.String(),
+		UpdatedAt: entityUser.UpdatedAt.String(),
 	}
 	
-	// Format timestamps
-	if entityUser.CreatedAt != nil {
-		user.CreatedAt = entityUser.CreatedAt.Format("2006-01-02 15:04:05")
-	}
-	if entityUser.UpdatedAt != nil {
-		user.UpdatedAt = entityUser.UpdatedAt.Format("2006-01-02 15:04:05")
-	}
-
 	return &v1.GetUserRes{
-		User: user,
+		Success: true,
+		Message: "User retrieved successfully",
+		Data:    user,
 	}, nil
 }
 
-func (c *ControllerV1) CreateUser(ctx context.Context, req *v1.CreateUserReq) (res *v1.CreateUserRes, err error) {
-	// Parse name into first and last name
-	var firstName, lastName string
-	nameParts := strings.Fields(req.Name)
-	if len(nameParts) > 0 {
-		firstName = nameParts[0]
-		if len(nameParts) > 1 {
-			lastName = strings.Join(nameParts[1:], " ")
-		}
-	}
-	
-	// Create user data object
-	userData := &do.Users{
-		FirstName: firstName,
-		LastName:  lastName,
-		Email:     req.Email,
-		Password:  req.Password, // In production, this should be hashed
-		Username:  req.Email, // Use email as username for now
-		CreatedAt: gtime.Now(),
-		UpdatedAt: gtime.Now(),
-	}
-	
-	// Save to database
-	userService := service.NewUsers()
-	err = userService.CreateUser(ctx, userData)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to create user in database")
-	}
-	
-	// Get the created user to return with ID
-	// Since we don't have the ID from create, we'll find by email
-	var createdUser *entity.Users
-	err = dao.Users.Ctx(ctx).Where("email", req.Email).OrderDesc("created_at").Scan(&createdUser)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to retrieve created user")
-	}
-	
-	if createdUser == nil {
-		return nil, gerror.New("failed to find created user")
-	}
-	
-	// Convert ID from string to int
-	id, err := strconv.Atoi(createdUser.Id)
-	if err != nil {
-		return nil, gerror.Wrap(err, "invalid user ID format")
-	}
-	
-	user := &v1.User{
-		ID:    id,
-		Name:  req.Name,
-		Email: req.Email,
-	}
-	
-	// Format timestamps
-	if createdUser.CreatedAt != nil {
-		user.CreatedAt = createdUser.CreatedAt.Format("2006-01-02 15:04:05")
-	}
-	if createdUser.UpdatedAt != nil {
-		user.UpdatedAt = createdUser.UpdatedAt.Format("2006-01-02 15:04:05")
-	}
-
-	return &v1.CreateUserRes{
-		User: user,
+func (c *ControllerV1) GetCurrentUser(ctx context.Context, req *v1.GetCurrentUserReq) (res *v1.GetCurrentUserRes, err error) {
+	// TODO: Get current user from authentication context
+	return &v1.GetCurrentUserRes{
+		Success: false,
+		Message: "Not implemented",
+		Error:   "Method not implemented",
 	}, nil
 }
 
-func (c *ControllerV1) UpdateUser(ctx context.Context, req *v1.UpdateUserReq) (res *v1.UpdateUserRes, err error) {
-	// First check if user exists
-	userService := service.NewUsers()
-	existingUser, err := userService.GetUserByID(ctx, req.ID)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get user from database")
-	}
-	
-	if existingUser == nil {
-		return nil, gerror.New("user not found")
-	}
-	
-	// Parse name into first and last name if provided
-	var firstName, lastName string
-	if req.Name != "" {
-		nameParts := strings.Fields(req.Name)
-		if len(nameParts) > 0 {
-			firstName = nameParts[0]
-			if len(nameParts) > 1 {
-				lastName = strings.Join(nameParts[1:], " ")
-			}
-		}
-	} else {
-		// Keep existing names if not provided
-		firstName = existingUser.FirstName
-		lastName = existingUser.LastName
-	}
-	
-	// Create update data object
-	updateData := &do.Users{
-		Id:        existingUser.Id,
-		FirstName: firstName,
-		LastName:  lastName,
-		UpdatedAt: gtime.Now(),
-	}
-	
-	// Update email if provided
-	if req.Email != "" {
-		updateData.Email = req.Email
-	}
-	
-	// Update password if provided
-	if req.Password != "" {
-		updateData.Password = req.Password // In production, this should be hashed
-	}
-	
-	// Update in database
-	err = userService.UpdateUser(ctx, updateData)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to update user in database")
-	}
-	
-	// Get updated user
-	updatedUser, err := userService.GetUserByID(ctx, req.ID)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get updated user")
-	}
-	
-	// Convert ID from string to int
-	id, err := strconv.Atoi(updatedUser.Id)
-	if err != nil {
-		return nil, gerror.Wrap(err, "invalid user ID format")
-	}
-	
-	// Combine first and last name
-	name := updatedUser.FirstName
-	if updatedUser.LastName != "" {
-		if name != "" {
-			name += " " + updatedUser.LastName
-		} else {
-			name = updatedUser.LastName
-		}
-	}
-	if name == "" {
-		name = updatedUser.Username
-	}
-	
-	user := &v1.User{
-		ID:    id,
-		Name:  name,
-		Email: updatedUser.Email,
-	}
-	
-	// Format timestamps
-	if updatedUser.CreatedAt != nil {
-		user.CreatedAt = updatedUser.CreatedAt.Format("2006-01-02 15:04:05")
-	}
-	if updatedUser.UpdatedAt != nil {
-		user.UpdatedAt = updatedUser.UpdatedAt.Format("2006-01-02 15:04:05")
-	}
+func (c *ControllerV1) FollowUser(ctx context.Context, req *v1.FollowUserReq) (res *v1.FollowUserRes, err error) {
+	return &v1.FollowUserRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
 
-	return &v1.UpdateUserRes{
-		User: user,
+func (c *ControllerV1) UnfollowUser(ctx context.Context, req *v1.UnfollowUserReq) (res *v1.UnfollowUserRes, err error) {
+	return &v1.UnfollowUserRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
+
+func (c *ControllerV1) CheckFollowStatus(ctx context.Context, req *v1.CheckFollowStatusReq) (res *v1.CheckFollowStatusRes, err error) {
+	return &v1.CheckFollowStatusRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
+
+func (c *ControllerV1) GetMutualFollows(ctx context.Context, req *v1.GetMutualFollowsReq) (res *v1.GetMutualFollowsRes, err error) {
+	return &v1.GetMutualFollowsRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
+
+func (c *ControllerV1) GetUserFollowers(ctx context.Context, req *v1.GetUserFollowersReq) (res *v1.GetUserFollowersRes, err error) {
+	return &v1.GetUserFollowersRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
+
+func (c *ControllerV1) GetUserFollowing(ctx context.Context, req *v1.GetUserFollowingReq) (res *v1.GetUserFollowingRes, err error) {
+	return &v1.GetUserFollowingRes{
+		Success: false,
+		Message: "Not implemented",
+	}, nil
+}
+
+func (c *ControllerV1) GetFollowStats(ctx context.Context, req *v1.GetFollowStatsReq) (res *v1.GetFollowStatsRes, err error) {
+	return &v1.GetFollowStatsRes{
+		Success: false,
+		Message: "Not implemented",
 	}, nil
 }
 
 func (c *ControllerV1) DeleteUser(ctx context.Context, req *v1.DeleteUserReq) (res *v1.DeleteUserRes, err error) {
-	// First check if user exists
+	// Check if user exists first
 	userService := service.NewUsers()
-	existingUser, err := userService.GetUserByID(ctx, req.ID)
+	existingUser, err := userService.GetUserByIDString(ctx, req.ID)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get user from database")
+		return &v1.DeleteUserRes{
+			Success: false,
+			Message: "Failed to delete user",
+		}, nil
 	}
 	
 	if existingUser == nil {
 		return &v1.DeleteUserRes{
 			Success: false,
-		}, gerror.New("user not found")
+			Message: "User not found",
+		}, nil
 	}
 	
-	// Delete user from database
-	err = userService.DeleteUser(ctx, req.ID)
+	// Delete the user
+	err = userService.DeleteUserByString(ctx, req.ID)
 	if err != nil {
 		return &v1.DeleteUserRes{
 			Success: false,
-		}, gerror.Wrap(err, "failed to delete user from database")
+			Message: "Failed to delete user",
+		}, nil
 	}
 	
 	return &v1.DeleteUserRes{
 		Success: true,
+		Message: "User deleted successfully",
+		Data:    nil,
 	}, nil
 }

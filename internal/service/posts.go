@@ -45,18 +45,16 @@ func (s *sPosts) GetPosts(ctx context.Context, req *v1.GetPostsReq) (*v1.GetPost
 	if req.Limit <= 0 {
 		req.Limit = 10
 	}
-	if req.Page <= 0 {
-		req.Page = 1
+	if req.Offset < 0 {
+		req.Offset = 0
 	}
-	
-	offset := (req.Page - 1) * req.Limit
 	
 	count, err := query.Count()
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to count posts")
 	}
 	
-	err = query.Order("created_at DESC").Limit(req.Limit).Offset(offset).Scan(&posts)
+	err = query.Order("created_at DESC").Limit(req.Limit).Offset(req.Offset).Scan(&posts)
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to get posts")
 	}
@@ -67,9 +65,21 @@ func (s *sPosts) GetPosts(ctx context.Context, req *v1.GetPostsReq) (*v1.GetPost
 		return nil, gerror.Wrap(err, "failed to convert posts")
 	}
 	
+	totalPages := int(count) / req.Limit
+	if int(count)%req.Limit > 0 {
+		totalPages++
+	}
+	
 	return &v1.GetPostsRes{
-		Posts: resultPosts,
-		Total: int(count),
+		Success: true,
+		Message: "Posts retrieved successfully",
+		Data:    resultPosts,
+		Meta: &v1.MetaData{
+			TotalItems: int(count),
+			Offset:     req.Offset,
+			Limit:      req.Limit,
+			TotalPages: totalPages,
+		},
 	}, nil
 }
 
@@ -92,7 +102,9 @@ func (s *sPosts) GetPost(ctx context.Context, req *v1.GetPostReq) (*v1.GetPostRe
 	}
 	
 	return &v1.GetPostRes{
-		Post: resultPost,
+		Success: true,
+		Message: "Post retrieved successfully",
+		Data:    resultPost,
 	}, nil
 }
 
@@ -117,7 +129,6 @@ func (s *sPosts) CreatePost(ctx context.Context, req *v1.CreatePostReq) (*v1.Cre
 		Body:       req.Body,
 		Slug:       req.Slug,
 		PhotoUrl:   req.PhotoUrl,
-		Published:  req.Published,
 		CreatedBy:  "admin", // TODO: Get from authenticated user
 		Createbyid: userId,
 	}
@@ -132,21 +143,12 @@ func (s *sPosts) CreatePost(ctx context.Context, req *v1.CreatePostReq) (*v1.Cre
 		return nil, gerror.Wrap(err, "failed to get post ID")
 	}
 	
-	// Get the created post
-	var createdPost *entity.Posts
-	err = dao.Posts.Ctx(ctx).Where("id", id).Scan(&createdPost)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get created post")
-	}
-	
-	var resultPost *v1.Post
-	err = gconv.Scan(createdPost, &resultPost)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to convert created post")
-	}
-	
 	return &v1.CreatePostRes{
-		Post: resultPost,
+		Success: true,
+		Message: "Post created successfully",
+		Data: &v1.PostID{
+			ID: gconv.String(id),
+		},
 	}, nil
 }
 
@@ -185,28 +187,16 @@ func (s *sPosts) UpdatePost(ctx context.Context, req *v1.UpdatePostReq) (*v1.Upd
 		post.PhotoUrl = req.PhotoUrl
 	}
 	
-	post.Published = req.Published
+
 	
 	_, err = dao.Posts.Ctx(ctx).Data(post).Where("id", req.ID).Update()
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to update post")
 	}
 	
-	// Get the updated post
-	var updatedPost *entity.Posts
-	err = dao.Posts.Ctx(ctx).Where("id", req.ID).Scan(&updatedPost)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get updated post")
-	}
-	
-	var resultPost *v1.Post
-	err = gconv.Scan(updatedPost, &resultPost)
-	if err != nil {
-		return nil, gerror.Wrap(err, "failed to convert updated post")
-	}
-	
 	return &v1.UpdatePostRes{
-		Post: resultPost,
+		Success: true,
+		Message: "Post updated successfully",
 	}, nil
 }
 
@@ -227,5 +217,6 @@ func (s *sPosts) DeletePost(ctx context.Context, req *v1.DeletePostReq) (*v1.Del
 	
 	return &v1.DeletePostRes{
 		Success: true,
+		Message: "Post deleted successfully",
 	}, nil
 }
