@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/joho/godotenv"
 )
@@ -12,24 +13,17 @@ import (
 // LoadEnvFiles loads environment files in order of precedence
 // This follows the convention for managing multiple environments
 func LoadEnvFiles() error {
-	env := GetEnv("APP_ENV", "development")
-
-	// Load in order of precedence (later files override earlier ones)
-	files := []string{
-		".env",                    // Base .env file
-		".env." + env,             // Environment-specific file (.env.development, .env.production, etc.)
+	err := godotenv.Load()
+	if err != nil {
+		return err
 	}
-
-	// Add local files if not in test environment
-	if env != "test" {
-		files = append(files, ".env.local")
-	}
-	files = append(files, ".env."+env+".local")
-
-	// Load files (ignore errors for missing files)
-	for _, file := range files {
-		_ = godotenv.Load(file)
-	}
+	gdb.SetConfig(gdb.Config{
+		"default": gdb.ConfigGroup{
+			gdb.ConfigNode{
+				Link: os.Getenv("DB_LINK"),
+			},
+		},
+	})
 
 	return nil
 }
@@ -110,15 +104,47 @@ func (c *ConfigHelper) GetBool(key string, defaultValue bool) bool {
 // Example usage functions
 
 // GetDatabaseConfig returns database configuration from environment variables
+// Supports both DB_LINK and individual DB_* environment variables
 func GetDatabaseConfig() map[string]string {
+	// Check if DB_LINK is provided
+	if databaseURL := GetEnv("DB_LINK", ""); databaseURL != "" {
+		return map[string]string{
+			"link": databaseURL,
+		}
+	}
+
+	// Fallback to individual environment variables
 	return map[string]string{
 		"host":     GetEnv("DB_HOST", "localhost"),
-		"port":     GetEnv("DB_PORT", "3306"),
+		"port":     GetEnv("DB_PORT", "5432"),
 		"user":     GetEnv("DB_USER", "root"),
 		"password": GetEnv("DB_PASSWORD", ""),
 		"name":     GetEnv("DB_NAME", "gfbackend"),
-		"type":     GetEnv("DB_TYPE", "mysql"),
+		"type":     GetEnv("DB_TYPE", "postgres"),
 	}
+}
+
+// GetDatabaseURL constructs a database URL from individual environment variables
+// Returns the DB_LINK if set, otherwise constructs it from DB_* variables
+func GetDatabaseURL() string {
+	// Check if DB_LINK is already provided
+	if databaseURL := GetEnv("DB_LINK", ""); databaseURL != "" {
+		return databaseURL
+	}
+
+	// Construct DATABASE_URL from individual components
+	dbType := GetEnv("DB_TYPE", "postgres")
+	dbUser := GetEnv("DB_USER", "root")
+	dbPassword := GetEnv("DB_PASSWORD", "")
+	dbHost := GetEnv("DB_HOST", "localhost")
+	dbPort := GetEnv("DB_PORT", "5432")
+	dbName := GetEnv("DB_NAME", "gfbackend")
+
+	// Format: mysql://user:password@host:port/database
+	if dbPassword != "" {
+		return dbType + "://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/" + dbName
+	}
+	return dbType + "://" + dbUser + "@" + dbHost + ":" + dbPort + "/" + dbName
 }
 
 // GetJWTConfig returns JWT configuration from environment variables

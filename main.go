@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "gfbackend/internal/packed"
+	_ "github.com/gogf/gf/contrib/drivers/pgsql/v2"
 	"log"
 
 	"github.com/gogf/gf/v2/os/gctx"

@@ -24,11 +24,11 @@ var (
 		Brief: "start http server",
 		Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 			s := g.Server()
-			
+
 			// Configure server with environment variables
 			port := utility.GetEnvInt("SERVER_PORT", 8080)
 			s.SetAddr(fmt.Sprintf(":%d", port))
-			
+
 			s.Group("/v1", func(group *ghttp.RouterGroup) {
 				group.Middleware(ghttp.MiddlewareHandlerResponse)
 				group.Bind(
